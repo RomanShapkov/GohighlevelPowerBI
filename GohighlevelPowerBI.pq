@@ -4,6 +4,10 @@ section GohighlevelPowerBI;
 client_id = "";
 client_secret = "";
 
+LocationId = Record.Field(Extension.CurrentCredential()[Properties], "locationId");
+companyid = Record.Field(Extension.CurrentCredential()[Properties], "companyId");
+
+GohighlevelPowerBI.GetCurrentCredential = () => Extension.CurrentCredential();
 
 redirectUrl = "https://oauth.powerbi.com/views/oauthredirect.html";
 authorize_uri = "https://marketplace.gohighlevel.com/oauth/chooselocation?";
@@ -20,10 +24,10 @@ shared GohighlevelPowerBI.NavTableNested = (location_id as text) as table =>
         GohighlevelPowerBI.SearchOpportunity = Value.ReplaceType(GohighlevelPowerBI.SearchOpportunityImpl, GohighlevelPowerBI.SearchOpportunityType),
         GohighlevelPowerBI.SearchOpportunityType =
             type function (  
-                             location_id as (type text meta [
+                             /*location_id as (type text meta [
                                 Documentation.FieldCaption = "location_id",
                                 Documentation.AllowedValues = {location_id}
-                                ]),
+                                ]),*/
                              optional startDate as (type date meta [
                                 Documentation.FieldCaption = "date"
                              ]),
@@ -36,6 +40,39 @@ shared GohighlevelPowerBI.NavTableNested = (location_id as text) as table =>
                     Documentation.LongDescription = "Search Opportunity"
             ],
 
+
+        GohighlevelPowerBI.GetContacts = Value.ReplaceType(GohighlevelPowerBI.GetContactsImpl, GohighlevelPowerBI.GetContactsType),
+        GohighlevelPowerBI.GetContactsType =
+            type function (  /*
+                             location_id as (type text meta [
+                                Documentation.FieldCaption = "location_id",
+                                Documentation.AllowedValues = {location_id}
+                                ])*/
+                           )
+                as function meta [
+                    Documentation.Name = "Get Contacts",
+                    Documentation.LongDescription = "Get Contacts"
+            ],
+
+
+        GohighlevelPowerBI.GetCustomFields = Value.ReplaceType(GohighlevelPowerBI.GetCustomFieldsImpl, GohighlevelPowerBI.GetCustomFieldsType),
+        GohighlevelPowerBI.GetCustomFieldsType =
+            type function (  /*
+                             location_id as (type text meta [
+                                Documentation.FieldCaption = "location_id",
+                                Documentation.AllowedValues = {location_id}
+                                ]), */
+                             optional model as (type text meta [
+                                Documentation.FieldCaption = "model",
+                                Documentation.AllowedValues = {"contact","opportunity", "all"}
+                             ])
+                           )
+                as function meta [
+                    Documentation.Name = "Get Custom Fields",
+                    Documentation.LongDescription = "Get Custom Fields"
+            ],
+
+
         /////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -46,8 +83,10 @@ shared GohighlevelPowerBI.NavTableNested = (location_id as text) as table =>
         lv1 = #table(
             table_header,
             {
-                {"SearchOpportunity", "SearchOpportunity", GohighlevelPowerBI.SearchOpportunity, "function", "function", "true"}
-                //{"GetReportList", "GetReportList", ExecDAX.GetReportNameList, "function", "function", "true"}
+                {"SearchOpportunity", "SearchOpportunity", GohighlevelPowerBI.SearchOpportunity, "function", "function", "true"},
+                {"GetContacts", "GetContacts", GohighlevelPowerBI.GetContacts, "function", "function", "true"},
+                {"GetCustomFields", "GetCustomFields", GohighlevelPowerBI.GetCustomFields, "function", "function", "true"}
+                //{"GetCurrentCredential", "GetCurrentCredential", GohighlevelPowerBI.GetCurrentCredential, "function", "function", "true"}
             }   
         )
     in
@@ -55,7 +94,7 @@ shared GohighlevelPowerBI.NavTableNested = (location_id as text) as table =>
 
 
 GohighlevelPowerBI.SearchOpportunityImpl = (
-        location_id, 
+        //location_id, 
         optional startDate as date,
         optional endDate as date
         ) =>
@@ -63,7 +102,7 @@ GohighlevelPowerBI.SearchOpportunityImpl = (
         u = "https://services.leadconnectorhq.com/opportunities/search",
         p = 
             let
-                p0 = [location_id = location_id, limit="100"],
+                p0 = [location_id = LocationId, limit="100"],
                 p1 = add_rec(p0, "date",Date.ToText(startDate, "MM-dd-yyyy")),
                 p2= add_rec(p1, "endDate",Date.ToText(endDate, "MM-dd-yyyy"))
             in
@@ -73,20 +112,54 @@ GohighlevelPowerBI.SearchOpportunityImpl = (
     in
         toTable(json);
 
+
+GohighlevelPowerBI.GetCustomFieldsImpl = (
+        //location_id, 
+        optional model as text
+        ) =>
+    let     
+        u = "https://services.leadconnectorhq.com/locations/" &LocationId& "/customFields",
+        p = 
+            let
+                //p0 = [location_id = LocationId],
+                p1 = add_rec([], "model", model)
+            in
+                p1,
+                
+        json = GohighlevelPowerBI.GetData(u, p, null, "customFields")
+    in
+        toTable(json);
+
+
+GohighlevelPowerBI.GetContactsImpl = (
+        //location_id as text
+        ) =>
+    let
+        u = "https://services.leadconnectorhq.com/contacts/",
+        p = 
+            let
+                p0 = [locationId = LocationId, limit="100"]
+            in
+                p0,
+                
+        json = GohighlevelPowerBI.GetData(u, p, null, "contacts")
+    in
+        toTable(json);
+
+
 GohighlevelPowerBI.GetData = (endpoint, params as record, optional start_page as number, optional obj_name as text) =>
     let
         h = [Version = "2021-07-28", Accept= "application/json"],
         p = params,
 
-        f = (page as number)=>
+        f = (optional page as number)=>
             let
                 p = add_rec(p, "page", page) ,
                 j = Json.Document(Web.Contents(endpoint, [Headers=h, Query=p]), 65001)
             in
                 Record.FieldOrDefault(j, obj_name, j),
         
-        json = if start_page is null then f(1) else GetAllPageData(start_page,1,f)
-
+        json = if start_page is null then f(110) else GetAllPageData(start_page,1,f)
     in
         json;
 //Data Source Authentication
