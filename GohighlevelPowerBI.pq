@@ -85,8 +85,8 @@ shared GohighlevelPowerBI.NavTableNested = (location_id as text) as table =>
             {
                 {"SearchOpportunity", "SearchOpportunity", GohighlevelPowerBI.SearchOpportunity, "function", "function", "true"},
                 {"GetContacts", "GetContacts", GohighlevelPowerBI.GetContacts, "function", "function", "true"},
-                {"GetCustomFields", "GetCustomFields", GohighlevelPowerBI.GetCustomFields, "function", "function", "true"}
-                //{"GetCurrentCredential", "GetCurrentCredential", GohighlevelPowerBI.GetCurrentCredential, "function", "function", "true"}
+                {"GetCustomFields", "GetCustomFields", GohighlevelPowerBI.GetCustomFields, "function", "function", "true"},
+                {"GetCurrentCredential", "GetCurrentCredential", GohighlevelPowerBI.GetCurrentCredential, "function", "function", "true"}
             }   
         )
     in
@@ -142,7 +142,7 @@ GohighlevelPowerBI.GetContactsImpl = (
             in
                 p0,
                 
-        json = GohighlevelPowerBI.GetData(u, p, null, "contacts")
+        json = GohighlevelPowerBI.GetData(u, p, 1, "contacts")
     in
         toTable(json);
 
@@ -150,38 +150,37 @@ GohighlevelPowerBI.GetContactsImpl = (
 GohighlevelPowerBI.GetData = (endpoint, params as record, optional start_page as number, optional obj_name as text) =>
     let
         h = [Version = "2021-07-28", Accept= "application/json"],
-        p = params,
 
-        f = (optional page as number)=>
+        f2 = (page as number, optional nextPageUrl as text) as record=>
             let
-                p = add_rec(p, "page", page) ,
-                j = Json.Document(Web.Contents(endpoint, [Headers=h, Query=p]), 65001)
+                p = try Record.FieldOrDefault( Uri.Parts(nextPageUrl), "Query" ) otherwise if page=1 then params else [],
+                j = Json.Document( Web.Contents(endpoint, [Headers=h, Query=p]), 65001)
             in
-                Record.FieldOrDefault(j, obj_name, j),
+                [ 
+                    data = Record.FieldOrDefault(j, obj_name, j),
+                    #"meta" = j[#"meta"] 
+                ],
         
-        json = if start_page is null then f(110) else GetAllPageData(start_page,1,f)
+        json = if start_page is null then f2(1)[data] else GetAllPageData2(f2)
     in
         json;
 //Data Source Authentication
 
 
-GetAllPageData = (startpos as any, step as number, func as function) as list =>
-    if not(startpos is null) then
+GetAllPageData2 = (func as function) as list =>
         List.Combine(
             List.Generate( 
-                ()=> [ x = startpos , y = func(x)],
-                each not(List.IsEmpty([y])),
-                each [ x=[x] + step, y = func(x) ],
-                each [y]
+                ()=> [ x = 1 , y = func(x)],
+                each not(List.IsEmpty([y][data])),
+                each [ x=[x] + 1, z=[y][#"meta"][nextPageUrl], y = func(x, z) ],
+                each [y][data]
             )
-        )
-    else
-        func(startpos);
+        );
 
 
 
 GohighlevelPowerBI = [
-    //TestConnection = (dataSourcePath) => {"XeroBear.NavTableNested"},
+    //TestConnection = (dataSourcePath) => {"GohighlevelPowerBI.NavTableNested"},
     Authentication = [
         OAuth = [
             StartLogin = StartLogin,
